@@ -88,7 +88,7 @@ class TransaksiResource extends Resource
                 Forms\Components\Section::make('Periode')
                     ->schema([
                         Forms\Components\TextInput::make('minggu')
-                            ->label('Minggu')
+                            ->label('Minggu Ke')
                             ->required()
                             ->numeric()
                             ->minValue(1)
@@ -129,25 +129,41 @@ class TransaksiResource extends Resource
                             ->numeric()
                             ->prefix('Rp')
                             ->default(0)
-                            ->disabled(fn ($context) => $context === 'view'),
+                            ->disabled(fn ($context) => $context === 'view')
+                            ->live()
+                            ->afterStateUpdated(function ($state, Forms\Set $set, Forms\Get $get) {
+                                $minusPagi = floatval($state ?? 0);
+                                $bayar = floatval($get('bayar') ?? 0);
+                                $sisa = $minusPagi + $bayar;
+                                $set('sisa', $sisa);
+                            }),
 
                         Forms\Components\TextInput::make('bayar')
                             ->label('Bayar')
                             ->numeric()
                             ->prefix('Rp')
                             ->default(0)
-                            ->disabled(fn ($context) => $context === 'view'),
+                            ->disabled(fn ($context) => $context === 'view')
+                            ->live()
+                            ->afterStateUpdated(function ($state, Forms\Set $set, Forms\Get $get) {
+                                $bayar = floatval($state ?? 0);
+                                $minusPagi = floatval($get('minus_pagi') ?? 0);
+                                $sisa = $minusPagi + $bayar;
+                                $set('sisa', $sisa);
+                            }),
 
                         Forms\Components\TextInput::make('sisa')
-                            ->label('Sisa')
+                            ->label('Sisa (Auto)')
                             ->numeric()
                             ->prefix('Rp')
                             ->default(0)
-                            ->disabled(fn ($context) => $context === 'view'),
+                            ->disabled()
+                            ->helperText('Otomatis dihitung: Minus Pagi + Bayar'),
 
-                        Forms\Components\DatePicker::make('tanggal_transaksi')
+                        Forms\Components\DateTimePicker::make('tanggal_transaksi')
                             ->label('Tanggal Transaksi')
-                            ->default(now()),
+                            ->default(now())
+                            ->seconds(false),
                     ])->columns(3),
             ]);
     }
@@ -183,7 +199,8 @@ class TransaksiResource extends Resource
                         '5' => 'Jumat',
                         '6' => 'Sabtu',
                         default => $state,
-                    }),
+                    })
+                    ->toggleable(),
                 Tables\Columns\TextColumn::make('minus_pagi')
                     ->label('Minus Pagi')
                     ->money('IDR')
@@ -206,7 +223,7 @@ class TransaksiResource extends Resource
                     ->toggleable(),
 
                 Tables\Columns\TextColumn::make('minggu')
-                    ->label('Minggu')
+                    ->label('Minggu Ke')
                     ->sortable()
                     ->alignCenter(),
 
@@ -234,6 +251,13 @@ class TransaksiResource extends Resource
                     ->label('Tahun')
                     ->sortable()
                     ->alignCenter(),
+
+                Tables\Columns\TextColumn::make('tanggal_transaksi')
+                    ->label('Tanggal Transaksi')
+                    ->dateTime('d M Y H:i')
+                    ->sortable()
+                    ->toggleable()
+                    ->placeholder('Belum Transaksi'),
 
                 Tables\Columns\TextColumn::make('created_at')
                     ->label('Dibuat')

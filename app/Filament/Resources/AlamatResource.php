@@ -62,11 +62,23 @@ class AlamatResource extends Resource
     {
         return $table
             ->columns([
-                Tables\Columns\TextColumn::make('downline.name')
+                Tables\Columns\TextColumn::make('downline.kode')
                     ->label('Downline')
                     ->searchable()
                     ->sortable()
                     ->weight('medium'),
+                Tables\Columns\TextColumn::make('downline.name')
+                    ->label('Nama Downline')
+                    ->searchable()
+                    ->sortable()
+                    ->weight('medium'),
+                Tables\Columns\TextColumn::make('downline.sales.name')
+                    ->label('Sales')
+                    ->searchable()
+                    ->sortable()
+                    ->weight('medium'),
+
+
 
                 TextColumn::make('maps')
                     ->label('Maps/Koordinat')
@@ -115,6 +127,7 @@ class AlamatResource extends Resource
             ->striped()
             ->paginated([10, 25, 50]);
     }
+
 
     public static function getRelations(): array
     {

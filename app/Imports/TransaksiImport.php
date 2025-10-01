@@ -66,6 +66,7 @@ class TransaksiImport implements ToCollection, WithHeadingRow, WithValidation, S
                             'nama' => $row['nama'],
                             'kode' => $row['kode'],
                             'minus_pagi' => $this->parseNumber($row['minus_pagi']),
+                            'tanggal' => null, // Set null dulu, akan diupdate saat ada transfer
                         ];
                     }
                 }
@@ -107,6 +108,9 @@ class TransaksiImport implements ToCollection, WithHeadingRow, WithValidation, S
         // minus_pagi dari Excel (negatif) disimpan sebagai negatif
         $minusPagi = $data['minus_pagi']; // Simpan apa adanya (negatif)
 
+        // Set tanggal null jika belum ada data transfer
+        $tanggalTransaksi = isset($data['tanggal']) && !empty($data['tanggal']) ? $data['tanggal'] : null;
+
         $transaksi = Transaksi::updateOrCreate(
             [
                 'id_downline' => $downline->id,
@@ -120,11 +124,11 @@ class TransaksiImport implements ToCollection, WithHeadingRow, WithValidation, S
                 'minus_pagi' => $minusPagi, // Negatif
                 'bayar' => 0, // Initialize bayar to 0, akan diupdate di step berikutnya
                 'sisa' => $minusPagi, // Initially sisa = minus_pagi (negatif)
-                'tanggal_transaksi' => now()->format('Y-m-d'),
+                'tanggal_transaksi' => $tanggalTransaksi, // null jika belum ada transfer
             ]
         );
 
-        Log::info("Transaksi utama berhasil diproses untuk downline: {$downline->name} (kode: {$downline->kode}), minus_pagi: {$minusPagi}, periode: minggu {$this->minggu}, bulan {$this->bulan}, tahun {$this->tahun}");
+        Log::info("Transaksi utama berhasil diproses untuk downline: {$downline->name} (kode: {$downline->kode}), minus_pagi: {$minusPagi}, tanggal: " . ($tanggalTransaksi ?? 'null') . ", periode: minggu {$this->minggu}, bulan {$this->bulan}, tahun {$this->tahun}");
     }
 
     protected function processAllTransfers($transfers)
@@ -181,9 +185,11 @@ class TransaksiImport implements ToCollection, WithHeadingRow, WithValidation, S
                 // Contoh: (-433715) + 930000 = 496285
                 $targetTransaction->sisa = $targetTransaction->minus_pagi + $targetTransaction->bayar;
 
-                // Update tanggal dengan tanggal terakhir
+                // Update tanggal dengan tanggal terakhir dari transfer
                 if ($transferData['tanggal_terakhir']) {
                     $targetTransaction->tanggal_transaksi = $transferData['tanggal_terakhir'];
+                } else if (is_null($targetTransaction->tanggal_transaksi)) {
+                    $targetTransaction->tanggal_transaksi = now()->format('Y-m-d H:i:s');
                 }
 
                 $targetTransaction->save();
@@ -266,14 +272,58 @@ class TransaksiImport implements ToCollection, WithHeadingRow, WithValidation, S
     protected function parseDate($dateString)
     {
         try {
-            // Handle format like "30/08/2025 18:44"
-            if (preg_match('/(\d{2})\/(\d{2})\/(\d{4})/', $dateString, $matches)) {
-                return Carbon::createFromFormat('d/m/Y', $matches[1] . '/' . $matches[2] . '/' . $matches[3])->format('Y-m-d');
+            // Debug log
+            Log::info("Parsing date string: '{$dateString}'");
+
+            // Clean up the date string
+            $dateString = trim($dateString);
+
+            if (empty($dateString)) {
+                Log::warning("Empty date string, using current time");
+                return now()->format('Y-m-d H:i:s');
             }
 
-            return Carbon::parse($dateString)->format('Y-m-d');
+            // Handle Excel serial number format (e.g., 45899.386168981)
+            if (is_numeric($dateString) && floatval($dateString) > 1) {
+                $excelEpoch = Carbon::create(1900, 1, 1); // Excel epoch starts at 1900-01-01
+                $days = floor(floatval($dateString)) - 2; // Excel counts from 1, and has a leap year bug
+                $timeFloat = floatval($dateString) - floor(floatval($dateString));
+                $seconds = $timeFloat * 24 * 60 * 60; // Convert decimal to seconds
+
+                $parsedDate = $excelEpoch->addDays($days)->addSeconds($seconds);
+                Log::info("Parsed Excel serial number {$dateString} to: " . $parsedDate->format('Y-m-d H:i:s'));
+                return $parsedDate->format('Y-m-d H:i:s');
+            }
+
+            // Handle format like "30/08/2025  14:25:56" (with seconds)
+            if (preg_match('/(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{1,2}):(\d{1,2})/', $dateString, $matches)) {
+                $parsedDate = Carbon::createFromFormat('d/m/Y H:i:s', $matches[1] . '/' . $matches[2] . '/' . $matches[3] . ' ' . $matches[4] . ':' . $matches[5] . ':' . $matches[6]);
+                Log::info("Parsed datetime with seconds: " . $parsedDate->format('Y-m-d H:i:s'));
+                return $parsedDate->format('Y-m-d H:i:s');
+            }
+
+            // Handle format like "30/08/2025 18:44" (without seconds)
+            if (preg_match('/(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{1,2})/', $dateString, $matches)) {
+                $parsedDate = Carbon::createFromFormat('d/m/Y H:i', $matches[1] . '/' . $matches[2] . '/' . $matches[3] . ' ' . $matches[4] . ':' . $matches[5]);
+                Log::info("Parsed datetime: " . $parsedDate->format('Y-m-d H:i:s'));
+                return $parsedDate->format('Y-m-d H:i:s');
+            }
+
+            // Handle format like "30/08/2025" (without time)
+            if (preg_match('/(\d{1,2})\/(\d{1,2})\/(\d{4})/', $dateString, $matches)) {
+                $parsedDate = Carbon::createFromFormat('d/m/Y', $matches[1] . '/' . $matches[2] . '/' . $matches[3]);
+                Log::info("Parsed date only: " . $parsedDate->format('Y-m-d H:i:s'));
+                return $parsedDate->format('Y-m-d H:i:s');
+            }
+
+            // Try Carbon's general parsing
+            $parsedDate = Carbon::parse($dateString);
+            Log::info("Carbon parsed: " . $parsedDate->format('Y-m-d H:i:s'));
+            return $parsedDate->format('Y-m-d H:i:s');
+
         } catch (\Exception $e) {
-            return now()->format('Y-m-d');
+            Log::error("Date parsing failed for '{$dateString}': " . $e->getMessage());
+            return now()->format('Y-m-d H:i:s');
         }
     }
 

@@ -2,17 +2,18 @@
 
 namespace App\Filament\Resources;
 
-use App\Filament\Resources\DownlineResource\Pages;
-use App\Filament\Resources\DownlineResource\RelationManagers;
-use App\Models\Downline;
-use App\Models\User;
 use Filament\Forms;
-use Filament\Forms\Form;
-use Filament\Resources\Resource;
+use App\Models\User;
 use Filament\Tables;
+use App\Models\Downline;
+use Filament\Forms\Form;
 use Filament\Tables\Table;
+use Filament\Resources\Resource;
+use Filament\Tables\Columns\TextColumn;
 use Illuminate\Database\Eloquent\Builder;
+use App\Filament\Resources\DownlineResource\Pages;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
+use App\Filament\Resources\DownlineResource\RelationManagers;
 
 class DownlineResource extends Resource
 {
@@ -76,9 +77,9 @@ class DownlineResource extends Resource
     {
         return $table
             ->columns([
-                Tables\Columns\TextColumn::make('id')
-                    ->label('ID')
-                    ->sortable(),
+                TextColumn::make('index')
+                ->label('No')
+                ->rowIndex(),
 
                 Tables\Columns\TextColumn::make('kode')
                     ->label('Kode')

@@ -33,7 +33,7 @@ class Transaksi extends Model
         'minus_pagi' => 'float',
         'bayar' => 'float',
         'sisa' => 'float',
-        'tanggal_transaksi' => 'date',
+        'tanggal_transaksi' => 'datetime',
     ];
 
     /**

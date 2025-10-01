@@ -22,7 +22,7 @@ return new class extends Migration
             $table->decimal('minus_pagi', 15, 2)->default(0);
             $table->decimal('bayar', 15, 2)->default(0)->nullable();
             $table->decimal('sisa', 15, 2)->default(0)->nullable();
-            $table->date('tanggal_transaksi')->nullable();
+            $table->datetime('tanggal_transaksi')->nullable();
             $table->timestamps();
         });
     }
