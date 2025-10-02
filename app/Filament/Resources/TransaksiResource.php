@@ -35,6 +35,28 @@ class TransaksiResource extends Resource
 
     protected static ?int $navigationSort = 3;
 
+    /**
+     * Check if current user is sales
+     */
+    public static function isSales(): bool
+    {
+        return auth()->user()->hasRole('sales');
+    }
+    /**
+     * Apply sales-specific query modifications
+     */
+    public static function getEloquentQuery(): Builder
+    {
+        $query = parent::getEloquentQuery();
+
+        // Jika user adalah sales, filter hanya data mereka
+        if (static::isSales()) {
+            $query->where('id_sales', auth()->id());
+        }
+
+        return $query;
+    }
+
     public static function form(Form $form): Form
     {
         return $form
@@ -43,7 +65,13 @@ class TransaksiResource extends Resource
                     ->schema([
                         Forms\Components\Select::make('id_downline')
                             ->label('Downline')
-                            ->relationship('downline', 'name')
+                            ->relationship(
+                                'downline',
+                                'name',
+                                fn ($query) => static::isSales()
+                                    ? $query->where('id_sales', auth()->id())
+                                    : $query
+                            )
                             ->required()
                             ->searchable()
                             ->preload()
@@ -69,6 +97,8 @@ class TransaksiResource extends Resource
                             ->required()
                             ->searchable()
                             ->preload()
+                            ->disabled(fn () => static::isSales())
+                            ->default(fn () => static::isSales() ? auth()->id() : null)
                             ->helperText('Akan terisi otomatis berdasarkan downline yang dipilih'),
 
                         Forms\Components\Select::make('kode_hari')
@@ -87,12 +117,15 @@ class TransaksiResource extends Resource
 
                 Forms\Components\Section::make('Periode')
                     ->schema([
-                        Forms\Components\TextInput::make('minggu')
+                        Forms\Components\Select::make('minggu')
                             ->label('Minggu Ke')
                             ->required()
-                            ->numeric()
-                            ->minValue(1)
-                            ->maxValue(4),
+                            ->options([
+                                1 => 'Minggu 1',
+                                2 => 'Minggu 2',
+                                3 => 'Minggu 3',
+                                4 => 'Minggu 4',
+                            ]),
 
                         Forms\Components\Select::make('bulan')
                             ->label('Bulan')
@@ -118,7 +151,7 @@ class TransaksiResource extends Resource
                             ->required()
                             ->numeric()
                             ->minValue(2020)
-                            ->maxValue(2030)
+                            ->maxValue(2100)
                             ->default(date('Y')),
                     ])->columns(3),
 
@@ -225,7 +258,13 @@ class TransaksiResource extends Resource
                 Tables\Columns\TextColumn::make('minggu')
                     ->label('Minggu Ke')
                     ->sortable()
-                    ->alignCenter(),
+                    ->alignCenter()
+                    ->formatStateUsing(fn ($state) => match($state) {
+                        1 => 'Minggu 1',
+                        2 => 'Minggu 2',
+                        3 => 'Minggu 3',
+                        4 => 'Minggu 4',
+    }),
 
                 Tables\Columns\TextColumn::make('bulan')
                     ->label('Bulan')
@@ -270,7 +309,8 @@ class TransaksiResource extends Resource
                     ->label('Sales')
                     ->relationship('sales', 'name')
                     ->searchable()
-                    ->preload(),
+                    ->preload()
+                    ->visible(fn () => !static::isSales()),
 
                 // SelectFilter::make('id_downline')
                 //     ->label('Downline')
@@ -341,6 +381,7 @@ class TransaksiResource extends Resource
                     ->label('Download Template')
                     ->icon('heroicon-o-arrow-down-tray')
                     ->color('info')
+                    ->visible(fn () => !auth()->user()->hasRole('sales'))
                     ->action(function () {
                         return Excel::download(new TransaksiTemplateExport, 'template_transaksi.xlsx');
                     }),
@@ -349,6 +390,7 @@ class TransaksiResource extends Resource
                     ->label('Import Excel')
                     ->icon('heroicon-o-arrow-up-tray')
                     ->color('success')
+                    ->visible(fn () => !auth()->user()->hasRole('sales'))
                     ->form([
                         Forms\Components\Section::make('Filter Import')
                             ->description('Tentukan kode hari, minggu, bulan, dan tahun untuk data yang akan diimport')
@@ -402,10 +444,16 @@ class TransaksiResource extends Resource
 
                                 Forms\Components\Select::make('id_sales')
                                     ->label('Sales')
-                                    ->options(User::all()->pluck('name', 'id'))
+                                    ->options(
+                                        static::isSales()
+                                            ? [auth()->id() => auth()->user()->name]
+                                            : User::all()->pluck('name', 'id')
+                                    )
                                     ->required()
                                     ->searchable()
-                                    ->preload(),
+                                    ->preload()
+                                    ->disabled(fn () => static::isSales())
+                                    ->default(fn () => static::isSales() ? auth()->id() : null),
                             ])->columns(3),
 
                         Forms\Components\Section::make('File Excel')
@@ -483,3 +531,4 @@ class TransaksiResource extends Resource
         ];
     }
 }
+

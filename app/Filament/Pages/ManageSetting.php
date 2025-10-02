@@ -34,8 +34,6 @@ class ManageSetting extends SettingsPage
                         ->label('Registration Enabled'),
                     Toggle::make('password_reset_enabled')
                         ->label('Password Reset Enabled'),
-                    Toggle::make('sso_enabled')
-                        ->label('SSO Enabled'),
                 ]),
             ]);
     }

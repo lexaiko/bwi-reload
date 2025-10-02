@@ -26,7 +26,7 @@ A powerful and opinionated FilamentPHP starter kit designed to accelerate your a
 
 - 🛡️ Role-Based Access Control (RBAC) using [Filament Shield](https://filamentphp.com/plugins/bezhansalleh-shield)
 - 🔑 Enhanced login page with custom design
-- 🌐 Social login with Google via [Filament Socialite](https://filamentphp.com/plugins/dododedodonl-socialite)
+
 - 👤 User profile management with [Filament Breezy](https://filamentphp.com/plugins/jeffgreco-breezy)
 - 🔒 Instant 2-Factor Authentication capabilities
 - 👥 Simple user-to-role assignment

@@ -21,10 +21,10 @@ class DatabaseSeeder extends Seeder
         ]);
 
 
-        //call BookSeeder
+        //call Seeders
         $this->call(
             [
-
+                KaidoSettingSeeder::class,
             ]
         );
     }

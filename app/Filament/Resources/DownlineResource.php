@@ -29,6 +29,25 @@ class DownlineResource extends Resource
 
     protected static ?int $navigationSort = 2;
 
+    public static function isSales(): bool
+    {
+        return auth()->user()->hasRole('sales');
+    }
+    /**
+     * Apply sales-specific query modifications
+     */
+    public static function getEloquentQuery(): Builder
+    {
+        $query = parent::getEloquentQuery();
+
+        // Jika user adalah sales, filter hanya data mereka
+        if (static::isSales()) {
+            $query->where('id_sales', auth()->id());
+        }
+
+        return $query;
+    }
+
     public static function form(Form $form): Form
     {
         return $form

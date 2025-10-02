@@ -13,7 +13,6 @@ class KaidoSetting extends Settings
     public bool $registration_enabled;
     public bool $login_enabled;
     public bool $password_reset_enabled;
-    public bool $sso_enabled;
 
     public static function group(): string
     {

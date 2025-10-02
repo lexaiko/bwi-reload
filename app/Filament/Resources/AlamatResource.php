@@ -26,6 +26,27 @@ class AlamatResource extends Resource
 
     protected static ?int $navigationSort = 4;
 
+
+    public static function isSales(): bool
+    {
+        return auth()->user()->hasRole('sales');
+    }
+    /**
+     * Apply sales-specific query modifications
+     */
+    public static function getEloquentQuery(): Builder
+    {
+        $query = parent::getEloquentQuery();
+
+        // Jika user adalah sales, filter hanya alamat dari downline mereka
+        if (static::isSales()) {
+            $query->whereHas('downline', function ($q) {
+                $q->where('id_sales', auth()->id());
+            });
+        }
+
+        return $query;
+    }
     public static function form(Form $form): Form
     {
         return $form
@@ -34,7 +55,13 @@ class AlamatResource extends Resource
                     ->schema([
                         Forms\Components\Select::make('id_downline')
                             ->label('Downline')
-                            ->relationship('downline', 'name')
+                            ->relationship(
+                                'downline',
+                                'name',
+                                fn ($query) => static::isSales()
+                                    ? $query->where('id_sales', auth()->id())
+                                    : $query
+                            )
                             ->required()
                             ->searchable()
                             ->preload()
@@ -109,9 +136,14 @@ class AlamatResource extends Resource
             ->filters([
                 SelectFilter::make('id_downline')
                     ->label('Downline')
-                    ->relationship('downline', 'name')
-                    ->searchable()
-                    ->preload(),
+                    ->options(function () {
+                        if (auth()->user()->hasRole('sales')) {
+                            return \App\Models\Downline::where('id_sales', auth()->id())
+                                ->pluck('name', 'id');
+                        }
+                        return \App\Models\Downline::pluck('name', 'id');
+                    })
+                    ->searchable(),
             ])
             ->actions([
                 Tables\Actions\ViewAction::make(),
