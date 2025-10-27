@@ -14,7 +14,7 @@ use Illuminate\Validation\ValidationException;
 
 class Login extends BaseLogin
 {
-    protected static string $view = 'filament.pages.login';
+protected static string $view = 'filament.pages.login';
 
     public function authenticate(): ?LoginResponse
     {

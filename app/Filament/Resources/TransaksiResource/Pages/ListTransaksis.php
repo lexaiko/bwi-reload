@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\TransaksiResource\Pages;
 
 use App\Filament\Resources\TransaksiResource;
+use App\Filament\Widgets\TransaksiPerMingguWidget;
 use Filament\Actions;
 use Filament\Resources\Pages\ListRecords;
 
@@ -14,6 +15,13 @@ class ListTransaksis extends ListRecords
     {
         return [
             Actions\CreateAction::make(),
+        ];
+    }
+
+    protected function getHeaderWidgets(): array
+    {
+        return [
+            TransaksiPerMingguWidget::class,
         ];
     }
 }
