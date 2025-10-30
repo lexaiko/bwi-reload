@@ -33,7 +33,9 @@ class TransaksiResource extends Resource
 
     protected static ?string $pluralModelLabel = 'Transaksi';
 
-    protected static ?int $navigationSort = 3;
+    protected static ?int $navigationSort = -3;
+
+    protected static ?string $navigationGroup = 'Transaksi';
 
     /**
      * Check if current user is sales

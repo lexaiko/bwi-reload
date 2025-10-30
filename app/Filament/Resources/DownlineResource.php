@@ -27,7 +27,9 @@ class DownlineResource extends Resource
 
     protected static ?string $pluralModelLabel = 'Downlines';
 
-    protected static ?int $navigationSort = 2;
+    protected static ?int $navigationSort = -2;
+
+    protected static ?string $navigationGroup = 'Downline Management';
 
     public static function isSales(): bool
     {

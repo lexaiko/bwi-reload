@@ -24,7 +24,9 @@ class AlamatResource extends Resource
 
     protected static ?string $pluralModelLabel = 'Alamat';
 
-    protected static ?int $navigationSort = 4;
+    protected static ?int $navigationSort = -4;
+
+    protected static ?string $navigationGroup = 'Downline Management';
 
 
     public static function isSales(): bool
