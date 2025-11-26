@@ -35,10 +35,17 @@ class TransaksiImport implements ToCollection, WithHeadingRow, WithValidation, S
 
     public function collection(Collection $rows)
     {
+        Log::info("\n\n========================================");
+        Log::info("IMPORT TRANSAKSI DIMULAI");
+        Log::info("========================================");
+        Log::info("Total rows dari Excel: " . $rows->count());
+
         // Filter out completely empty rows
         $rows = $rows->filter(function ($row) {
             return !empty(array_filter($row->toArray()));
         });
+
+        Log::info("Rows setelah filter empty: " . $rows->count());
 
         // Step 1: Group main transaction data (NAMA, KODE, MINUS PAGI)
         $mainTransactions = [];
@@ -49,7 +56,8 @@ class TransaksiImport implements ToCollection, WithHeadingRow, WithValidation, S
         foreach ($rows as $index => $row) {
             try {
                 // Validate row has either main data or transfer data
-                $hasMainData = !empty($row['nama']) && !empty($row['kode']) && !empty($row['minus_pagi']);
+                // Note: minus_pagi bisa 0, jadi pakai isset() bukan empty()
+                $hasMainData = !empty($row['nama']) && !empty($row['kode']) && isset($row['minus_pagi']) && $row['minus_pagi'] !== null && $row['minus_pagi'] !== '';
                 $hasTransferData = !empty($row['transfer_server']) && !empty($row['jumlah']);
 
                 if (!$hasMainData && !$hasTransferData) {
@@ -59,15 +67,25 @@ class TransaksiImport implements ToCollection, WithHeadingRow, WithValidation, S
 
                 // Process main transaction data
                 if ($hasMainData) {
-                    $key = $row['nama'] . '|' . $row['kode'];
+                    $key = trim($row['kode']); // Gunakan hanya kode sebagai key (unik)
+                    $namaFromExcel = trim($row['nama']);
 
+                    Log::info("Baris " . ($index + 2) . " - Processing: Nama='{$namaFromExcel}', Kode='{$key}'");
+
+                    // Jika kode sudah ada, update dengan nama terbaru dari Excel
                     if (!isset($mainTransactions[$key])) {
                         $mainTransactions[$key] = [
-                            'nama' => $row['nama'],
-                            'kode' => $row['kode'],
+                            'nama' => $namaFromExcel,
+                            'kode' => $key,
                             'minus_pagi' => $this->parseNumber($row['minus_pagi']),
                             'tanggal' => null, // Set null dulu, akan diupdate saat ada transfer
                         ];
+                        Log::info("Kode '{$key}' BARU ditambahkan dengan nama: '{$namaFromExcel}'");
+                    } else {
+                        // Update nama jika ada data baru dengan kode sama
+                        $namaLamaInArray = $mainTransactions[$key]['nama'];
+                        $mainTransactions[$key]['nama'] = $namaFromExcel;
+                        Log::info("Kode '{$key}' SUDAH ADA - Update nama dari '{$namaLamaInArray}' ke '{$namaFromExcel}'");
                     }
                 }
 
@@ -85,17 +103,34 @@ class TransaksiImport implements ToCollection, WithHeadingRow, WithValidation, S
             }
         }
 
+        Log::info("\n========================================");
+        Log::info("STEP 3: Process Main Transactions");
+        Log::info("Total main transactions: " . count($mainTransactions));
+        Log::info("========================================\n");
+
         // Step 3: Process main transactions first
         foreach ($mainTransactions as $data) {
             $this->processMainTransaction($data);
         }
 
+        Log::info("\n========================================");
+        Log::info("STEP 4: Process Transfers");
+        Log::info("Total transfers: " . count($transfersToProcess));
+        Log::info("========================================\n");
+
         // Step 4: Process all transfers (group by target kode)
         $this->processAllTransfers($transfersToProcess);
+
+        Log::info("\n========================================");
+        Log::info("IMPORT TRANSAKSI SELESAI");
+        Log::info("========================================\n\n");
     }
 
     protected function processMainTransaction($data)
     {
+        Log::info("=== processMainTransaction START ===");
+        Log::info("Data yang akan diproses - Nama: '{$data['nama']}', Kode: '{$data['kode']}'");
+
         // Find or create downline
         $downline = $this->findOrCreateDownline($data['nama'], $data['kode']);
 
@@ -104,12 +139,18 @@ class TransaksiImport implements ToCollection, WithHeadingRow, WithValidation, S
             return;
         }
 
+        Log::info("Downline yang digunakan - ID: {$downline->id}, Nama: '{$downline->name}', Kode: '{$downline->kode}'");
+
         // Create or update main transaction (NAMA, KODE, MINUS PAGI)
         // minus_pagi dari Excel (negatif) disimpan sebagai negatif
         $minusPagi = $data['minus_pagi']; // Simpan apa adanya (negatif)
 
         // Set tanggal null jika belum ada data transfer
         $tanggalTransaksi = isset($data['tanggal']) && !empty($data['tanggal']) ? $data['tanggal'] : null;
+
+        // Jika minus_pagi adalah 0, maka sisa tetap 0 (tidak ada kalkulasi)
+        // Jika minus_pagi bukan 0 (negatif), maka sisa = minus_pagi
+        $sisa = ($minusPagi == 0) ? 0 : $minusPagi;
 
         $transaksi = Transaksi::updateOrCreate(
             [
@@ -121,9 +162,9 @@ class TransaksiImport implements ToCollection, WithHeadingRow, WithValidation, S
             [
                 'id_sales' => $this->idSales,
                 'kode_hari' => $this->kodeHari,
-                'minus_pagi' => $minusPagi, // Negatif
+                'minus_pagi' => $minusPagi,
                 'bayar' => 0, // Initialize bayar to 0, akan diupdate di step berikutnya
-                'sisa' => $minusPagi, // Initially sisa = minus_pagi (negatif)
+                'sisa' => $sisa, // 0 jika minus_pagi = 0, atau minus_pagi jika ada minus
                 'tanggal_transaksi' => $tanggalTransaksi, // null jika belum ada transfer
             ]
         );
@@ -180,10 +221,14 @@ class TransaksiImport implements ToCollection, WithHeadingRow, WithValidation, S
                 // Update bayar dengan total dari semua transfer ke downline ini
                 $targetTransaction->bayar += $transferData['total_bayar'];
 
-                // Calculate new sisa = minus_pagi + bayar
-                // minus_pagi (negatif) + bayar (positif) = sisa
-                // Contoh: (-433715) + 930000 = 496285
-                $targetTransaction->sisa = $targetTransaction->minus_pagi + $targetTransaction->bayar;
+                // Calculate new sisa
+                // Jika minus_pagi adalah 0, maka sisa tetap 0 (tidak ada kalkulasi)
+                // Jika minus_pagi bukan 0 (negatif), maka sisa = minus_pagi + bayar
+                if ($targetTransaction->minus_pagi == 0) {
+                    $targetTransaction->sisa = 0;
+                } else {
+                    $targetTransaction->sisa = $targetTransaction->minus_pagi + $targetTransaction->bayar;
+                }
 
                 // Update tanggal dengan tanggal terakhir dari transfer
                 if ($transferData['tanggal_terakhir']) {
@@ -208,11 +253,11 @@ class TransaksiImport implements ToCollection, WithHeadingRow, WithValidation, S
                     'tahun' => $this->tahun,
                     'minus_pagi' => 0, // Default 0 karena tidak ada data utama
                     'bayar' => $transferData['total_bayar'],
-                    'sisa' => $transferData['total_bayar'], // 0 + bayar
+                    'sisa' => 0, // Jika minus_pagi = 0, maka sisa tetap 0
                     'tanggal_transaksi' => $transferData['tanggal_terakhir'] ?: now()->format('Y-m-d'),
                 ]);
 
-                Log::info("Transaksi baru dibuat untuk downline {$targetDownline->name} (kode: {$targetKode}), bayar: {$newTransaction->bayar}");
+                Log::info("Transaksi baru dibuat untuk downline {$targetDownline->name} (kode: {$targetKode}), minus_pagi: 0, bayar: {$newTransaction->bayar}, sisa: 0");
             }
         } else {
             Log::warning("Downline target tidak ditemukan untuk kode: {$targetKode}");
@@ -221,21 +266,41 @@ class TransaksiImport implements ToCollection, WithHeadingRow, WithValidation, S
 
     protected function findOrCreateDownline($nama, $kode)
     {
-        // First try to find exact match
+        // Clean up nama dan kode dari whitespace
+        $nama = trim($nama);
+        $kode = trim($kode);
+
+        Log::info("\n=== findOrCreateDownline START ===");
+        Log::info("Parameter - Nama: '{$nama}' (length: " . strlen($nama) . "), Kode: '{$kode}' (length: " . strlen($kode) . ")");
+
+        // Find by exact kode match only (kode is unique identifier)
         $downline = Downline::where('kode', $kode)->first();
 
         if ($downline) {
+            $namaLama = trim($downline->name);
+            Log::info("Downline DITEMUKAN - ID: {$downline->id}");
+            Log::info("Nama LAMA: '{$namaLama}' (length: " . strlen($namaLama) . ")");
+            Log::info("Nama BARU: '{$nama}' (length: " . strlen($nama) . ")");
+            Log::info("Sama? " . ($namaLama === $nama ? 'YA' : 'TIDAK'));
+
+            // Update nama jika berbeda dari Excel (handle perubahan nama)
+            // Bandingkan setelah di-trim untuk menghindari masalah whitespace
+            if ($namaLama !== $nama) {
+                Log::info("🔄 AKAN MENGUPDATE nama dari '{$namaLama}' ke '{$nama}' untuk kode: {$kode}");
+                $downline->name = $nama;
+                $saved = $downline->save();
+                Log::info("Save result: " . ($saved ? 'TRUE' : 'FALSE'));
+
+                // Verify update berhasil
+                $downline->refresh();
+                Log::info("✅ VERIFIKASI - Nama sekarang di database: '{$downline->name}'");
+                Log::info("=== findOrCreateDownline END (UPDATED) ===\n");
+            } else {
+                Log::info("ℹ️ Nama SAMA, tidak perlu update");
+                Log::info("=== findOrCreateDownline END (NO CHANGE) ===\n");
+            }
             return $downline;
-        }
-
-        // Try to find by name similarity
-        $downline = Downline::where('name', 'LIKE', '%' . $nama . '%')->first();
-
-        if ($downline) {
-            return $downline;
-        }
-
-        // Create new downline if not found
+        }        // Create new downline if not found by kode
         $downline = Downline::create([
             'kode' => $kode,
             'name' => $nama,
@@ -244,7 +309,7 @@ class TransaksiImport implements ToCollection, WithHeadingRow, WithValidation, S
             'limit_saldo' => 0,
         ]);
 
-        Log::info("Downline baru dibuat: {$nama} - {$kode}");
+        Log::info("✓ Downline BARU dibuat: {$nama} - {$kode}");
 
         return $downline;
     }
